@@ -6,7 +6,6 @@ import scipy.special as sp
 import sktensor as skt
 from sklearn.base import BaseEstimator, TransformerMixin
 
-# from path import path
 from argparse import ArgumentParser
 # from utils import *        ## TODO - add util functions
 
