@@ -7,7 +7,7 @@ import sktensor as skt
 from sklearn.base import BaseEstimator, TransformerMixin
 
 from argparse import ArgumentParser
-# from utils import *        ## TODO - add util functions
+from utils import *
 
 class HPTFSI():
 	def __init__(self, n_modes=3, n_components=100,  max_iter=200, tol=0.0001,     #TODO add alpha_p,c,d,beta_p
@@ -76,7 +76,12 @@ class HPTFSI():
 		self.sumE_MK[m, :] = self.E_DK_M[m].sum(axis=0)
 		self.G_DK_M[m] = np.exp(sp.psi(gamma_DK)) / delta_DK
 
-	def _update(self, data, orig_data=None, mask_no=None):
+	def _update_gamma(m,data,side):
+		
+		temp = data.vals / self._reconstruct_nz(data,data.subs,(self.G_DK_M[0],self.G_DK_M[1],self.G_DK_M[2]))
+
+
+	def _update(self, data, side, orig_data=None, mask_no=None):
 
 		curr_elbo = -np.inf
 		for itn in xrange(self.max_iter):
@@ -97,8 +102,7 @@ class HPTFSI():
 			# if delta < self.tol:
 			#     break
 
-
-	def fit(self, data,test_times=None,orig_data=None,mask_no=None,bool_test=False):
+	def fit(self, data,side ,test_times=None,orig_data=None,mask_no=None,bool_test=False):
 		
 		self.bool_test = bool_test
 		if self.bool_test == True:
@@ -106,7 +110,7 @@ class HPTFSI():
 			print "LATER"
 		
 		self._init_all_components(data.shape)
-		self._update(data,orig_data,mask_no)
+		self._update(data,side,orig_data,mask_no)
 
 def main():
 	p = ArgumentParser()
