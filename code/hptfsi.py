@@ -52,7 +52,7 @@ class HPTFSI():
 		self.gamma_DK_M[m] = gamma_DK
 		self.delta_DK_M[m] = delta_DK
 		self.E_DK_M[m] = gamma_DK / delta_DK
-		self.sumE_MK[m, :] = self.E_DK_M[m].sum(axis=0)
+		self.sumE_MK[m, :] = self.E_DK_M[m].sum(axis=0,keepdims=True)
 		self.G_DK_M[m] = np.exp(sp.psi(gamma_DK) - np.log(delta_DK))
 
 	def _init_all_components(self,mode_dims):
@@ -64,8 +64,8 @@ class HPTFSI():
 		self._init_component(m,1,self.n_components,1.)
 		
 		for m in range(0,self.n_modes-1):
-			self.beta_gamma[m] = np.ones((1,mode_dims[m]),dtype=np.float)*(self.alpha*self.n_components + self.alpha_p)
-			self.beta_delta[m] = rn.uniform(size=(1,mode_dims[m])) *self.beta_p
+			self.beta_gamma[m] = np.ones((mode_dims[m],1),dtype=np.float)*(self.alpha*self.n_components + self.alpha_p)
+			self.beta_delta[m] = rn.uniform(size=(mode_dims[m],1)) *self.beta_p
 			self.beta_E[m] = self.beta_gamma[m]/self.beta_delta[m]
 
 	def _update_cache(self, m):
@@ -73,20 +73,52 @@ class HPTFSI():
 		gamma_DK = self.gamma_DK_M[m]
 		delta_DK = self.delta_DK_M[m]
 		self.E_DK_M[m] = gamma_DK / delta_DK
-		self.sumE_MK[m, :] = self.E_DK_M[m].sum(axis=0)
+		self.sumE_MK[m, :] = self.E_DK_M[m].sum(axis=0,keepdims=True)
 		self.G_DK_M[m] = np.exp(sp.psi(gamma_DK)) / delta_DK
 
-	def _update_gamma(m,data,side):
+	def _reconstruct_nz_data(self, subs_I_M, G_DK_M):
 		
-		temp = data.vals / self._reconstruct_nz(data,data.subs,(self.G_DK_M[0],self.G_DK_M[1],self.G_DK_M[2]))
+		nz_recon_IK = np.ones((subs_I_M[0].size, self.n_components))	# I = subs_I_M[0].size, K = self.n_components
+		for m in xrange(self.n_modes-1):
+			nz_recon_IK *= G_DK_M[m][subs_I_M[m], :]
+		return nz_recon_IK.sum(axis=1)
 
+	def _reconstruct_nz_side(self, subs_I_M, G_DK_M):
+
+		nz_recon_IK = (np.ones((subs_I_M[0].size, self.n_components)) * G_DK_M[0][subs_I_M[0], :]* G_DK_M[1][subs_I_M[1], :]) * G_DK_M[self.n_modes-1]	# I = subs_I_M[0].size, K = self.n_components
+		return nz_recon_IK.sum(axis=1)
+
+	def _update_gamma(self, m, data, side):
+		
+		tmp = data.vals / self._reconstruct_nz_data(data.subs,self.G_DK_M)
+		uttkrp_DK = sp_uttkrp(tmp, data.subs, m, self.G_DK_M[0:self.n_modes-1])
+		self.gamma_DK_M[m][:, :] = self.alpha + self.G_DK_M[m] * uttkrp_DK
+		if m==0 or m==1:
+			tmp = side.vals / self._reconstruct_nz_side(side.subs,self.G_DK_M)
+			uttkrp_DK = sp_uttkrp(tmp, side.subs, m, self.G_DK_M[0:2]) * self.G_DK_M[m] * self.G_DK_M[self.n_modes-1]
+			self.gamma_DK_M[m][:,:] += uttkrp_DK
+
+	def _update_delta(self,m):
+		
+		sumE_MK = self.sumE_MK
+		sumE_MK[m, :] = 1.
+		uttrkp_DK = sumE_MK.prod(axis=0,keepdims=True)
+		self.delta_DK_M[m][:, :] = uttrkp_DK
+		self.delta_DK_M[m][:, :] += self.beta_E[m]
+		if m==0 or m==1:
+			sumE_MK[self.n_modes-2,:] = 1.
+			self.delta_DK[m][:,:] += sumE_MK.prod(axis=0,keepdims=True)*self.E_DK_M[self.n_modes-1]
+
+	def _update_beta(self,m):
+
+		self.beta_delta[m] = 
 
 	def _update(self, data, side, orig_data=None, mask_no=None):
 
 		curr_elbo = -np.inf
 		for itn in xrange(self.max_iter):
 			s = time.time()
-			for m in self.modes:
+			for m in self.n_modes-1:
 				self._update_gamma(m, data)
 				self._update_delta(m)
 				self._update_cache(m)
