@@ -10,9 +10,9 @@ from argparse import ArgumentParser
 from utils import *
 
 class HPTFSI():
-	def __init__(self, n_modes=3, n_components=100,  max_iter=200, tol=0.0001,     #TODO add alpha_p,c,d,beta_p
-					smoothness=100, verbose=True, alpha=0.1)
-		
+	
+	def __init__(self, n_modes=3, n_components=100,  max_iter=200, tol=0.0001,smoothness=100, verbose=True, alpha=0.1, alpha_p=0.1, c=1., d=1., beta_p=1.):
+				
 		self.n_modes = n_modes+1
 		self.n_components = n_components
 		self.max_iter = max_iter
@@ -111,7 +111,17 @@ class HPTFSI():
 
 	def _update_beta(self,m):
 
-		self.beta_delta[m] = 
+		self.beta_delta[m][:] = self.beta_p + self.E_DK_M[m].sum(axis=1,keepdims=True)
+
+	def _update_lamda(self,side):
+
+		tmp = (side.vals/self._reconstruct_nz_side(side.subs,self.G_DK_M))*(self.G_DK_M[0][side.subs[0],:]*self.G_DK_M[1][side.subs[1],:])
+		self.gamma_DK_M[self.n_modes-1][:] = self.c + tmp.sum(axis=0,keepdims=True)*self.G_DK_M[self.n_modes-1]
+		self.delta_DK_M[self.n_modes-1][:] = self.d + self.sumE_MK[0]*self.sumE_MK[1]
+
+	def _mae_nz(self,data):
+
+		return (data.vals - parafac(self.G_DK_M[0:self.n_modes-1])[data.subs]).sum()
 
 	def _update(self, data, side, orig_data=None, mask_no=None):
 
@@ -119,12 +129,12 @@ class HPTFSI():
 		for itn in xrange(self.max_iter):
 			s = time.time()
 			for m in self.n_modes-1:
-				self._update_gamma(m, data)
+				self._update_gamma(m, data, side)
 				self._update_delta(m)
 				self._update_cache(m)
 				self._update_beta(m)
 				self._check_component(m)
-
+			self._update_lamda(side)
 			bound = self.mae_nz(data)
 			delta = (curr_elbo - bound) if itn > 0 else np.nan
 			e = time.time() - s
@@ -142,7 +152,7 @@ class HPTFSI():
 			print "LATER"
 		
 		self._init_all_components(data.shape)
-		self._update(data,side,orig_data,mask_no)
+		self._update(data,side)  orig_data,mask_no
 
 def main():
 	p = ArgumentParser()
@@ -154,6 +164,10 @@ def main():
 	p.add_argument('-t', '--tol', type=float, default=1e-4)
 	p.add_argument('-s', '--smoothness', type=int, default=100)
 	p.add_argument('-a', '--alpha', type=float, default=0.1)
+	p.add_argument('-ap', '--alpha_p', type=float, default=0.1)
+	p.add_argument('-c', '--c_val', type=float, default=1.)
+	p.add_argument('-d', '--d_val', type=float, default=1.)
+	p.add_argument('-bp', '--beta_p', type=float, default=1.)
 	p.add_argument('-v', '--verbose', action="store_true", default=False)
 	p.add_argument('--debug', action="store_true", default=False)
 	args = p.parse_args()
@@ -168,11 +182,9 @@ def main():
 	assert isinstance(data,skt.sptensor)
 	assert isinstance(side,skt.sptensor)
 
-	mask = None
 	if args.mask is not None:
 		assert args.mask.ext == '.npz':
 		mask = np.load(args.mask)['data']
-		mask = None
 
 	start_time = time.time()
 	hptfsi = HPTFSI(n_modes=data.ndim,
@@ -182,11 +194,15 @@ def main():
 					smoothness=args.smoothness,
 					verbose=args.verbose,
 					alpha=args.alpha,
-					debug=args.debug)
+					alpha_p=args.alpha_p,
+					c=args.c_val,
+					d=args.d_val,
+					beta_p=args.beta_p)
+
 	hptfsi.fit(data,side)
 	end_time = time.time()
 	print "Training time = %d"%(end_time-start_time)
-	serialize(hptfsi,args.out)
+	serialize_hptfsi(hptfsi,args.out)
 
 if __name__ == '__main__':
 	main()
