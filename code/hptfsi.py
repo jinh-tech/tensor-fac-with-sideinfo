@@ -5,7 +5,7 @@ import numpy.random as rn
 import scipy.special as sp
 import sktensor as skt
 from sklearn.base import BaseEstimator, TransformerMixin
-
+import pickle
 from argparse import ArgumentParser
 from utils import *
 
@@ -152,7 +152,7 @@ class HPTFSI():
 			print "LATER"
 		
 		self._init_all_components(data.shape)
-		self._update(data,side)  orig_data,mask_no
+		self._update(data,side)  #orig_data,mask_no
 
 def main():
 	p = ArgumentParser()
@@ -165,8 +165,8 @@ def main():
 	p.add_argument('-s', '--smoothness', type=int, default=100)
 	p.add_argument('-a', '--alpha', type=float, default=0.1)
 	p.add_argument('-ap', '--alpha_p', type=float, default=0.1)
-	p.add_argument('-c', '--c_val', type=float, default=1.)
-	p.add_argument('-d', '--d_val', type=float, default=1.)
+	p.add_argument('-cv', '--c_val', type=float, default=1.)
+	p.add_argument('-dv', '--d_val', type=float, default=1.)
 	p.add_argument('-bp', '--beta_p', type=float, default=1.)
 	p.add_argument('-v', '--verbose', action="store_true", default=False)
 	p.add_argument('--debug', action="store_true", default=False)
@@ -175,15 +175,13 @@ def main():
 
 	assert args.data.exists() and args.out.exists()
 	assert args.data.ext == '.npz'
-	data_dict = np.load(args.data)
-	data = data_dict['data']	#should be skt.sptensor
-	side = data_dict['side']	#should be skt.sptensor
-	del data_dict
+	with open(args.data, "rb") as f:	
+		data,side = pickle.load(f)	#should be skt.sptensor
 	assert isinstance(data,skt.sptensor)
 	assert isinstance(side,skt.sptensor)
 
 	if args.mask is not None:
-		assert args.mask.ext == '.npz':
+		assert args.mask.ext == '.npz'
 		mask = np.load(args.mask)['data']
 
 	start_time = time.time()
